@@ -175,6 +175,22 @@ public partial class MainWindow : Window
             "Copiado", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
+    async void Instalar_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not ActualizacionPendiente p) return;
+        p.PuedeInstalar = false;
+        p.EstadoInstalacion = "Preparando...";
+
+        var (ok, reiniciar, mensaje) = await Task.Run(() =>
+            Actualizaciones.Instalar(p, texto => Dispatcher.Invoke(() => p.EstadoInstalacion = texto)));
+
+        p.EstadoInstalacion = mensaje;
+        p.PuedeInstalar = !ok;
+        if (reiniciar)
+            MessageBox.Show(this, $"\"{p.Titulo}\" quedó instalada.\n\nReinicia el notebook cuando puedas para que termine de aplicarse.",
+                "Reinicio pendiente", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
     void WindowsUpdate_Click(object sender, RoutedEventArgs e) => Abrir("ms-settings:windowsupdate");
 
     void Opcionales_Click(object sender, RoutedEventArgs e) => Abrir("ms-settings:windowsupdate-optionalupdates");

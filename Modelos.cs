@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows.Media;
 
 namespace SaludNotebook;
@@ -101,11 +102,31 @@ public class DriverInfo
     public string Comentario => Antiguo ? "Antiguo" : "";
 }
 
-public class ActualizacionPendiente
+public class ActualizacionPendiente : INotifyPropertyChanged
 {
     public string Titulo { get; init; } = "";
     public string Tipo { get; init; } = "";
     public bool Opcional { get; init; }
+
+    // Objeto IUpdate de Windows Update, necesario para instalarla.
+    public object? Com { get; init; }
+
+    string _estadoInstalacion = "";
+    public string EstadoInstalacion
+    {
+        get => _estadoInstalacion;
+        set { _estadoInstalacion = value; Avisar(nameof(EstadoInstalacion)); }
+    }
+
+    bool _puedeInstalar = true;
+    public bool PuedeInstalar
+    {
+        get => _puedeInstalar;
+        set { _puedeInstalar = value; Avisar(nameof(PuedeInstalar)); }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    void Avisar(string prop) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(prop));
 }
 
 public class InfoEquipo

@@ -234,8 +234,14 @@
                                 <DataTemplate>
                                     <Border Background="White" CornerRadius="6" Padding="12,8" Margin="0,0,0,6">
                                         <DockPanel>
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Tipo}" Foreground="#78909C" Margin="12,0,0,0"/>
-                                            <TextBlock Text="{Binding Titulo}" TextWrapping="Wrap"/>
+                                            <Button DockPanel.Dock="Right" Content="Instalar" Style="{StaticResource BotonPrincipal}"
+                                                    Margin="12,0,0,0" Padding="14,5" VerticalAlignment="Center"
+                                                    Tag="{Binding}" IsEnabled="{Binding PuedeInstalar}" Click="Instalar_Click"/>
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding EstadoInstalacion}" FontWeight="SemiBold"
+                                                       Foreground="#1565C0" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Tipo}" Foreground="#78909C"
+                                                       Margin="12,0,0,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Titulo}" TextWrapping="Wrap" VerticalAlignment="Center"/>
                                         </DockPanel>
                                     </Border>
                                 </DataTemplate>

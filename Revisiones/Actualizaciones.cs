@@ -28,6 +28,7 @@ static class Actualizaciones
                     Titulo = (string)u.Title,
                     Tipo = ((int)u.Type == 2 ? "Driver" : "Windows") + (opcional ? " · opcional" : ""),
                     Opcional = opcional,
+                    Com = u,
                 });
             }
         }
@@ -51,8 +52,42 @@ static class Actualizaciones
             s.Agregar("Actualizaciones opcionales", $"{opcionales} disponible{(opcionales == 1 ? "" : "s")}", Estado.Info,
                 "No son obligatorias y por eso Windows Update y Lenovo Vantage dicen \"todo actualizado\". " +
                 "Suelen ser drivers nuevos del fabricante: instálalas solo si algo te está fallando. " +
-                "Para verlas, toca \"Ver actualizaciones opcionales\" (arriba).");
+                "Puedes instalarlas aquí mismo con el botón \"Instalar\" de cada una.");
 
         return (s, pendientes);
+    }
+
+    // Descarga e instala una actualización. Devuelve el mensaje final y si pide reiniciar.
+    public static (bool Ok, bool Reiniciar, string Mensaje) Instalar(ActualizacionPendiente p, Action<string> progreso)
+    {
+        try
+        {
+            dynamic sesion = Activator.CreateInstance(Type.GetTypeFromProgID("Microsoft.Update.Session")!)!;
+            dynamic lista = Activator.CreateInstance(Type.GetTypeFromProgID("Microsoft.Update.UpdateColl")!)!;
+            dynamic u = p.Com ?? throw new InvalidOperationException("Actualización no disponible.");
+            if (!(bool)u.EulaAccepted) u.AcceptEula();
+            lista.Add(u);
+
+            progreso("Descargando...");
+            dynamic descargador = sesion.CreateUpdateDownloader();
+            descargador.Updates = lista;
+            descargador.Download();
+
+            progreso("Instalando...");
+            dynamic instalador = sesion.CreateUpdateInstaller();
+            instalador.Updates = lista;
+            dynamic resultado = instalador.Install();
+
+            // 2 = correcta, 3 = correcta con errores; el resto es fallo.
+            int codigo = resultado.ResultCode;
+            bool reiniciar = resultado.RebootRequired;
+            return codigo is 2 or 3
+                ? (true, reiniciar, reiniciar ? "Instalada ✔ (reinicia para terminar)" : "Instalada ✔")
+                : (false, false, $"No se pudo instalar (código {codigo})");
+        }
+        catch (Exception ex)
+        {
+            return (false, false, "Error: " + ex.Message);
+        }
     }
 }
