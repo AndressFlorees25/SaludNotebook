@@ -12,6 +12,7 @@ public partial class MainWindow : Window
     const string AppVantage = @"shell:AppsFolder\E046963F.LenovoCompanion_k1h2ywk1493x8!App";
 
     readonly ObservableCollection<Seccion> _secciones = new();
+    readonly SemaphoreSlim _colaInstalacion = new(1, 1);
     InfoEquipo? _equipo;
     bool _buscandoActualizaciones;
 
@@ -179,10 +180,22 @@ public partial class MainWindow : Window
     {
         if ((sender as FrameworkElement)?.Tag is not ActualizacionPendiente p) return;
         p.PuedeInstalar = false;
-        p.EstadoInstalacion = "Preparando...";
+        p.EstadoInstalacion = "En espera...";
 
-        var (ok, reiniciar, mensaje) = await Task.Run(() =>
-            Actualizaciones.Instalar(p, texto => Dispatcher.Invoke(() => p.EstadoInstalacion = texto)));
+        // Windows Update solo permite una instalación a la vez: las demás esperan su turno.
+        await _colaInstalacion.WaitAsync();
+        (bool ok, bool reiniciar, string mensaje) r;
+        try
+        {
+            p.EstadoInstalacion = "Preparando...";
+            r = await Task.Run(() =>
+                Actualizaciones.Instalar(p, texto => Dispatcher.Invoke(() => p.EstadoInstalacion = texto)));
+        }
+        finally
+        {
+            _colaInstalacion.Release();
+        }
+        var (ok, reiniciar, mensaje) = r;
 
         p.EstadoInstalacion = mensaje;
         p.PuedeInstalar = !ok;

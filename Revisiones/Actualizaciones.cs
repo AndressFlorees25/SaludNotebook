@@ -81,9 +81,16 @@ static class Actualizaciones
             // 2 = correcta, 3 = correcta con errores; el resto es fallo.
             int codigo = resultado.ResultCode;
             bool reiniciar = resultado.RebootRequired;
-            return codigo is 2 or 3
-                ? (true, reiniciar, reiniciar ? "Instalada ✔ (reinicia para terminar)" : "Instalada ✔")
-                : (false, false, $"No se pudo instalar (código {codigo})");
+            if (codigo is 2 or 3)
+                return (true, reiniciar, reiniciar ? "Instalada ✔ (reinicia para terminar)" : "Instalada ✔");
+
+            uint hr = unchecked((uint)(int)resultado.GetUpdateResult(0).HResult);
+            return (false, false, hr switch
+            {
+                0x80240016 => "Había otra instalación en curso. Pulsa Instalar de nuevo.",
+                0x8024A000 or 0x80240030 => "Windows pide reiniciar antes. Reinicia y vuelve a intentarlo.",
+                _ => $"No se pudo instalar (error 0x{hr:X8})",
+            });
         }
         catch (Exception ex)
         {
