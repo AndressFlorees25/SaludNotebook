@@ -222,6 +222,7 @@
                     <StackPanel Margin="12">
                         <WrapPanel>
                             <Button Content="Abrir Windows Update" Style="{StaticResource BotonPrincipal}" Click="WindowsUpdate_Click"/>
+                            <Button Content="Ver actualizaciones opcionales" Style="{StaticResource BotonSecundario}" Click="Opcionales_Click"/>
                             <Button x:Name="BotonVantage2" Content="Abrir Lenovo Vantage" Style="{StaticResource BotonSecundario}"
                                     Click="Vantage_Click" Visibility="Collapsed"/>
                         </WrapPanel>

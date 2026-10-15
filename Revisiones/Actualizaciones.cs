@@ -20,10 +20,14 @@ static class Actualizaciones
             for (int i = 0; i < total; i++)
             {
                 dynamic u = updates.Item(i);
+                // Windows Update solo instala solo las "autoseleccionadas"; el resto las muestra
+                // escondidas en Opciones avanzadas > Actualizaciones opcionales.
+                bool opcional = !(bool)u.AutoSelectOnWebSites;
                 pendientes.Add(new ActualizacionPendiente
                 {
                     Titulo = (string)u.Title,
-                    Tipo = (int)u.Type == 2 ? "Driver" : "Windows / programas",
+                    Tipo = ((int)u.Type == 2 ? "Driver" : "Windows") + (opcional ? " · opcional" : ""),
+                    Opcional = opcional,
                 });
             }
         }
@@ -34,12 +38,20 @@ static class Actualizaciones
             return (s, pendientes);
         }
 
-        var drivers = pendientes.Count(p => p.Tipo == "Driver");
-        if (pendientes.Count == 0)
-            s.Agregar("Actualizaciones pendientes", "Ninguna", Estado.Bien, "Windows está al día.");
+        var importantes = pendientes.Count(p => !p.Opcional);
+        var opcionales = pendientes.Count(p => p.Opcional);
+
+        if (importantes == 0)
+            s.Agregar("Actualizaciones importantes", "Ninguna", Estado.Bien, "Windows está al día.");
         else
-            s.Agregar("Actualizaciones pendientes", $"{pendientes.Count} ({drivers} de drivers)", Estado.Atencion,
-                "Hay actualizaciones esperando. Instálalas desde Windows Update (botón de abajo) y reinicia.");
+            s.Agregar("Actualizaciones importantes", $"{importantes} pendiente{(importantes == 1 ? "" : "s")}", Estado.Atencion,
+                "Windows normalmente las instala solo. Si quieres adelantarlo, toca \"Abrir Windows Update\" (arriba) y luego \"Buscar actualizaciones\".");
+
+        if (opcionales > 0)
+            s.Agregar("Actualizaciones opcionales", $"{opcionales} disponible{(opcionales == 1 ? "" : "s")}", Estado.Info,
+                "No son obligatorias y por eso Windows Update y Lenovo Vantage dicen \"todo actualizado\". " +
+                "Suelen ser drivers nuevos del fabricante: instálalas solo si algo te está fallando. " +
+                "Para verlas, toca \"Ver actualizaciones opcionales\" (arriba).");
 
         return (s, pendientes);
     }

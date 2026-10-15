@@ -105,6 +105,7 @@ public class ActualizacionPendiente
 {
     public string Titulo { get; init; } = "";
     public string Tipo { get; init; } = "";
+    public bool Opcional { get; init; }
 }
 
 public class InfoEquipo

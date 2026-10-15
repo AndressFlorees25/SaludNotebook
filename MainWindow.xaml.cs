@@ -177,6 +177,8 @@ public partial class MainWindow : Window
 
     void WindowsUpdate_Click(object sender, RoutedEventArgs e) => Abrir("ms-settings:windowsupdate");
 
+    void Opcionales_Click(object sender, RoutedEventArgs e) => Abrir("ms-settings:windowsupdate-optionalupdates");
+
     static void Abrir(string destino)
     {
         try
