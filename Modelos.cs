@@ -129,6 +129,18 @@ public class ActualizacionPendiente : INotifyPropertyChanged
     void Avisar(string prop) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(prop));
 }
 
+public class Componente
+{
+    public string Emoji { get; init; } = "";
+    public string Categoria { get; init; } = "";
+    public string Nombre { get; init; } = "";
+    public string Detalle { get; init; } = "";
+    public Estado Estado { get; init; } = Estado.Bien;
+    public string EstadoTexto { get; init; } = "Funciona bien";
+
+    public System.Windows.Media.Brush Color => Colores.De(Estado);
+}
+
 public class InfoEquipo
 {
     public string Fabricante { get; init; } = "";

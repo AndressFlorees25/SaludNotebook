@@ -157,6 +157,42 @@
                 </ScrollViewer>
             </TabItem>
 
+            <TabItem Header="Componentes">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="12">
+                        <ItemsControl x:Name="ListaComponentes" ItemTemplate="{StaticResource PlantillaHallazgo}"/>
+                        <TextBlock Style="{StaticResource TituloSeccion}" Margin="0,8,0,12" Text="Lo que hay dentro de tu notebook"/>
+                        <ItemsControl x:Name="TarjetasComponentes">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="White" CornerRadius="8" Padding="16,12" Margin="0,0,0,8">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="44"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Emoji}" FontFamily="Segoe UI Emoji" FontSize="24" VerticalAlignment="Top"/>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding Categoria}" Foreground="#78909C" FontSize="12"/>
+                                                <TextBlock Text="{Binding Nombre}" FontWeight="SemiBold" FontSize="15" Foreground="#263238" TextWrapping="Wrap"/>
+                                                <TextBlock Text="{Binding Detalle}" Foreground="#546E7A" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                            <Border Grid.Column="2" Background="{Binding Color}" CornerRadius="12" Padding="10,3"
+                                                    VerticalAlignment="Top" Margin="12,0,0,0" MaxWidth="260">
+                                                <TextBlock Text="{Binding EstadoTexto}" Foreground="White" FontWeight="SemiBold" FontSize="12" TextWrapping="Wrap"/>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Foreground="#78909C" TextWrapping="Wrap" Margin="0,8,0,0"
+                                   Text="Nota: Windows puede saber si una pieza funciona, pero no su desgaste físico (polvo, ventiladores, pasta térmica). Para eso, fíjate en la pestaña Temperatura."/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <TabItem Header="Batería">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <ItemsControl x:Name="ListaBateria" Margin="12" ItemTemplate="{StaticResource PlantillaHallazgo}"/>

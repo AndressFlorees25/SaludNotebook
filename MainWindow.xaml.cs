@@ -41,6 +41,7 @@ public partial class MainWindow : Window
         var temperatura = Task.Run(Temperatura.Revisar);
         var rendimiento = Task.Run(Rendimiento.Revisar);
         var drivers = Task.Run(Drivers.Revisar);
+        var componentes = Task.Run(Componentes.Revisar);
 
         Mostrar(await bateria, ListaBateria);
         Mostrar(await disco, ListaDisco);
@@ -49,6 +50,9 @@ public partial class MainWindow : Window
         var (secDrivers, listaDrivers) = await drivers;
         Mostrar(secDrivers, ListaDrivers);
         TablaDrivers.ItemsSource = listaDrivers;
+        var (secComponentes, listaComponentes) = await componentes;
+        Mostrar(secComponentes, ListaComponentes);
+        TarjetasComponentes.ItemsSource = listaComponentes;
 
         ActualizarBanner();
         BotonRevisar.IsEnabled = true;
