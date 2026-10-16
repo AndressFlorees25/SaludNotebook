@@ -13,7 +13,7 @@ static class Bateria
         if (bat == null)
         {
             s.Agregar("Batería", "No detectada", Estado.Info,
-                "No se encontró batería. Si es un notebook, puede estar desconectada o dañada.");
+                "No se encontró batería. En un PC de escritorio es normal; en un notebook puede estar desconectada o dañada.");
             return s;
         }
 

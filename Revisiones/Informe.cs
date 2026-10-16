@@ -11,6 +11,9 @@ static class Informe
                                IReadOnlyList<SesionJuego> sesiones, string ruta)
     {
         QuestPDF.Settings.License = LicenseType.Community;
+        // La fuente del PDF (Lato) no trae emojis: se quitan del texto, y si quedara algún símbolo raro
+        // se dibuja vacío en vez de cancelar el informe.
+        QuestPDF.Settings.ThrowOnMissingTextGlyphs = false;
 
         Document.Create(doc => doc.Page(page =>
         {
@@ -98,7 +101,15 @@ static class Informe
     static void Titulo(ColumnDescriptor col, string texto, Estado? estado = null)
     {
         col.Item().PaddingTop(10).BorderBottom(1).BorderColor(Color.FromHex(estado is { } e ? Colores.Hex(e) : "#B0BEC5"))
-           .PaddingBottom(2).Text(texto).FontSize(13).Bold();
+           .PaddingBottom(2).Text(SinEmojis(texto)).FontSize(13).Bold();
+    }
+
+    static string SinEmojis(string s)
+    {
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var c in s)
+            if (!char.IsSurrogate(c) && c is not (>= '☀' and <= '➿') && c != '️') sb.Append(c);
+        return sb.ToString().Replace("  ", " ").Trim();
     }
 
     static void Linea(ColumnDescriptor col, Estado estado, string titulo, string detalle)
@@ -109,8 +120,8 @@ static class Informe
                .Text(Etiqueta(estado)).FontColor(Colors.White).FontSize(8).Bold();
             row.RelativeItem().PaddingLeft(8).Column(c =>
             {
-                c.Item().Text(titulo).SemiBold();
-                if (detalle.Length > 0) c.Item().Text(detalle).FontColor(Color.FromHex("#546E7A")).FontSize(9);
+                c.Item().Text(SinEmojis(titulo)).SemiBold();
+                if (detalle.Length > 0) c.Item().Text(SinEmojis(detalle)).FontColor(Color.FromHex("#546E7A")).FontSize(9);
             });
         });
     }
@@ -121,7 +132,7 @@ static class Informe
             col.Item().Row(row =>
             {
                 row.ConstantItem(110).Text(k).FontColor(Color.FromHex("#607D8B"));
-                row.RelativeItem().Text(v).SemiBold();
+                row.RelativeItem().Text(SinEmojis(v)).SemiBold();
             });
     }
 

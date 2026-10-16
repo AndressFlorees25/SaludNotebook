@@ -14,9 +14,55 @@ static class Instalacion
     public const string TareaSemanal = @"SaludNotebook\Revision semanal";
     public const string ArgSemanal = "--semanal";
     public const string ArgConfigurar = "--configurar";
+    public const string ArgInforme = "--informe";
 
-    static string Exe => Environment.ProcessPath ?? throw new InvalidOperationException("No se encontró la app.");
+    static readonly string CarpetaInstalada = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "SaludNotebook");
+    static readonly string ExeInstalado = Path.Combine(CarpetaInstalada, "SaludNotebook.exe");
+    static readonly string MarcaNoInstalar = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SaludNotebook", "no-instalar");
+
+    static string ExeActual => Environment.ProcessPath ?? throw new InvalidOperationException("No se encontró la app.");
+
+    // Las tareas y accesos directos apuntan a la copia instalada si existe; si no, a la que está corriendo.
+    static string Exe => File.Exists(ExeInstalado) ? ExeInstalado : ExeActual;
     static string Schtasks => Path.Combine(Environment.SystemDirectory, "schtasks.exe");
+
+    // Versión portátil: un solo .exe (single-file), que se puede copiar a otro PC.
+    static bool EsPortatil => string.IsNullOrEmpty(typeof(Instalacion).Assembly.Location);
+
+    // Se ofrece instalar cuando se abre el .exe portátil desde fuera de la carpeta de instalación
+    // (ej. desde un pendrive o Descargas), salvo que el usuario ya haya dicho que no.
+    public static bool ConvieneOfrecerInstalar() =>
+        EsPortatil
+        && !string.Equals(Path.GetFullPath(ExeActual), Path.GetFullPath(ExeInstalado), StringComparison.OrdinalIgnoreCase)
+        && !File.Exists(MarcaNoInstalar);
+
+    public static void NoVolverAPreguntar()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(MarcaNoInstalar)!);
+        File.WriteAllText(MarcaNoInstalar, "");
+    }
+
+    // Copia el .exe a %LOCALAPPDATA%\Programs\SaludNotebook y crea acceso directo + revisión semanal.
+    public static void Instalar()
+    {
+        Directory.CreateDirectory(CarpetaInstalada);
+        foreach (var p in Process.GetProcessesByName("SaludNotebook").Where(p => p.Id != Environment.ProcessId))
+        {
+            try
+            {
+                if (string.Equals(p.MainModule?.FileName, ExeInstalado, StringComparison.OrdinalIgnoreCase)) p.Kill();
+            }
+            catch
+            {
+            }
+        }
+        File.Copy(ExeActual, ExeInstalado, true);
+        CrearTareaAbrir();
+        CrearAccesosDirectos();
+        CrearTareaSemanal();
+    }
 
     public static bool Existe(string tarea) =>
         Ejecutar(Schtasks, $"/Query /TN \"{tarea}\"") == 0;

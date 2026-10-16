@@ -26,6 +26,16 @@ public partial class App : Application
             return;
         }
 
+        // Generar el informe PDF sin abrir la ventana: SaludNotebook.exe --informe "C:\ruta\informe.pdf"
+        var iInforme = Array.IndexOf(e.Args, Instalacion.ArgInforme);
+        if (iInforme >= 0 && iInforme + 1 < e.Args.Length)
+        {
+            var r = await Revisor.RevisarAsync();
+            Informe.Generar(r, new List<ActualizacionPendiente>(), Historial.LeerSesiones(), e.Args[iInforme + 1]);
+            Shutdown();
+            return;
+        }
+
         // Primera instalación: acceso directo sin permisos + revisión semanal.
         if (e.Args.Contains(Instalacion.ArgConfigurar))
         {
@@ -38,6 +48,33 @@ public partial class App : Application
             catch (Exception ex)
             {
                 MessageBox.Show("No se pudo terminar la configuración: " + ex.Message, "Salud del Notebook");
+            }
+        }
+
+        // Versión portátil abierta en un PC nuevo: ofrecer instalarla.
+        else if (Instalacion.ConvieneOfrecerInstalar())
+        {
+            var r = MessageBox.Show(
+                "¿Quieres instalar Salud del Notebook en este PC?\n\n" +
+                "Se crea un acceso directo en el escritorio que la abre sin pedir permiso, y una revisión automática cada lunes.\n\n" +
+                "Si eliges No, igual puedes usarla ahora desde este archivo.",
+                "Salud del Notebook", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (r == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    Instalacion.Instalar();
+                    MessageBox.Show("¡Listo! Desde ahora ábrela con el ícono \"Salud del Notebook\" del escritorio.",
+                        "Salud del Notebook", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("No se pudo instalar: " + ex.Message, "Salud del Notebook");
+                }
+            }
+            else
+            {
+                Instalacion.NoVolverAPreguntar();
             }
         }
 

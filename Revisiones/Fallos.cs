@@ -161,7 +161,7 @@ static class Fallos
         if (m.StartsWith("amdkmdag") || m.StartsWith("atikmdag") || m.StartsWith("igdkmd") || m.StartsWith("dxg"))
             return "Actualiza el driver de video desde la página del fabricante.";
         if (m.StartsWith("rtw") || m.StartsWith("netw") || m.StartsWith("mtk") || m.StartsWith("mt76"))
-            return "Actualiza el driver WiFi desde Lenovo Vantage o Windows Update.";
+            return "Actualiza el driver WiFi desde la app o página de soporte del fabricante, o desde Windows Update.";
         if (m.StartsWith("vgk") || m.StartsWith("easyanticheat") || m.StartsWith("bedaisy"))
             return "Es el anti-trampas de un juego. Actualiza o reinstala ese juego.";
         if (m.StartsWith("aehd") || m.StartsWith("vigembus"))

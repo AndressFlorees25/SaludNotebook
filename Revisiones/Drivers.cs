@@ -41,7 +41,7 @@ static class Drivers
         foreach (var d in conError)
             s.Agregar("Dispositivo con problemas", Wmi.Texto(d, "Name") is { Length: > 0 } n ? n : "Dispositivo desconocido",
                 Estado.Problema,
-                $"Windows no puede usar este componente (código {Wmi.Numero(d, "ConfigManagerErrorCode")}). Instala su driver desde Lenovo Vantage o la página de soporte del fabricante.");
+                $"Windows no puede usar este componente (código {Wmi.Numero(d, "ConfigManagerErrorCode")}). Instala su driver desde la app o la página de soporte del fabricante (botón en Resumen).");
 
         // Tarjetas de video: son los drivers que más conviene tener al día.
         foreach (var v in Wmi.Consultar("SELECT Name, DriverVersion, DriverDate FROM Win32_VideoController"))
@@ -65,7 +65,7 @@ static class Drivers
             antiguos == 0 ? Estado.Bien : Estado.Atencion,
             antiguos == 0
                 ? $"Ningún driver del fabricante tiene más de {AnosAntiguo} años."
-                : $"Tienen más de {AnosAntiguo} años. No siempre es un problema (algunos componentes no reciben más actualizaciones), pero revisa en Lenovo Vantage si hay versiones nuevas. Aparecen primero en la lista de abajo.");
+                : $"Tienen más de {AnosAntiguo} años. No siempre es un problema (algunos componentes no reciben más actualizaciones), pero revisa en la app o página de soporte del fabricante si hay versiones nuevas. Aparecen primero en la lista de abajo.");
 
         return (s, lista);
     }

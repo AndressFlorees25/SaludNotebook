@@ -50,7 +50,7 @@ static class Actualizaciones
 
         if (opcionales > 0)
             s.Agregar("Actualizaciones opcionales", $"{opcionales} disponible{(opcionales == 1 ? "" : "s")}", Estado.Info,
-                "No son obligatorias y por eso Windows Update y Lenovo Vantage dicen \"todo actualizado\". " +
+                "No son obligatorias y por eso Windows Update (y la app del fabricante) dicen \"todo actualizado\". " +
                 "Suelen ser drivers nuevos del fabricante: instálalas solo si algo te está fallando. " +
                 "Puedes instalarlas aquí mismo con el botón \"Instalar\" de cada una.");
 
