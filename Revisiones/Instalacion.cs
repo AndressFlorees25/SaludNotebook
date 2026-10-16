@@ -58,6 +58,11 @@ static class Instalacion
             {
             }
         }
+        // Restos de versiones anteriores (no portátiles) que podrían mezclarse con el .exe nuevo.
+        foreach (var f in Directory.GetFiles(CarpetaInstalada).Where(f => !string.Equals(f, ExeInstalado, StringComparison.OrdinalIgnoreCase)))
+        {
+            try { File.Delete(f); } catch { }
+        }
         File.Copy(ExeActual, ExeInstalado, true);
         CrearTareaAbrir();
         CrearAccesosDirectos();
