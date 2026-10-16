@@ -1,5 +1,3 @@
-using System.Diagnostics.Eventing.Reader;
-
 namespace SaludNotebook.Revisiones;
 
 // Inventario de las piezas internas y si Windows las ve funcionando bien.
@@ -169,17 +167,6 @@ static class Componentes
                 ? "Windows no registró fallas de procesador, memoria ni placa."
                 : "Windows registró fallas de hardware. Si se repiten o el equipo se cuelga, llévalo a revisar.");
 
-        var apagones = ContarApagadosInesperados();
-        if (apagones >= 0)
-            s.Agregar($"Apagados inesperados (últimos {DiasHistorial} días)", $"{apagones}",
-                apagones >= 3 ? Estado.Atencion : Estado.Bien,
-                apagones switch
-                {
-                    0 => "El notebook no se ha apagado de golpe.",
-                    < 3 => "Pocas veces. Es normal si alguna vez lo apagaste manteniendo el botón o se quedó sin batería.",
-                    _ => "Se apagó o reinició de golpe varias veces. Puede ser por calor, la batería, el cargador o un driver. Fíjate si pasa jugando (calor) o al azar.",
-                });
-
         return (s, lista);
     }
 
@@ -200,36 +187,8 @@ static class Componentes
         return new ErroresHardware(cpu, mem, pci, fatal, otros);
     }
 
-    static int ContarApagadosInesperados()
-    {
-        try
-        {
-            return LeerEventos("Microsoft-Windows-Kernel-Power", 41).Count();
-        }
-        catch
-        {
-            return -1;
-        }
-    }
-
-    static IEnumerable<int> LeerEventos(string proveedor, int? id = null)
-    {
-        var ms = (long)TimeSpan.FromDays(DiasHistorial).TotalMilliseconds;
-        var filtroId = id == null ? "" : $" and EventID={id}";
-        var consulta = new EventLogQuery("System", PathType.LogName,
-            $"*[System[Provider[@Name='{proveedor}']{filtroId} and TimeCreated[timediff(@SystemTime) <= {ms}]]]");
-        var ids = new List<int>();
-        try
-        {
-            using var lector = new EventLogReader(consulta);
-            for (var ev = lector.ReadEvent(); ev != null; ev = lector.ReadEvent())
-                using (ev) ids.Add(ev.Id);
-        }
-        catch (EventLogNotFoundException)
-        {
-        }
-        return ids;
-    }
+    static IEnumerable<int> LeerEventos(string proveedor) =>
+        Eventos.Leer(proveedor, DiasHistorial).Select(e => e.Id);
 
     static Dictionary<string, long> LeerEstadosPnp() =>
         Wmi.Consultar("SELECT DeviceID, ConfigManagerErrorCode FROM Win32_PnPEntity")

@@ -25,6 +25,11 @@ static class Disco
         {
             var libre = unidad.AvailableFreeSpace * 100.0 / unidad.TotalSize;
             var gbLibres = unidad.AvailableFreeSpace / 1e9;
+            if (string.Equals(unidad.Name, Path.GetPathRoot(Environment.SystemDirectory), StringComparison.OrdinalIgnoreCase))
+            {
+                s.Metricas["libreGb"] = gbLibres;
+                s.Metricas["librePct"] = libre;
+            }
             var (estado, texto) = libre switch
             {
                 < 10 => (Estado.Problema, "Queda muy poco espacio: Windows se pone lento y puede fallar al actualizar. Borra archivos o desinstala programas."),
@@ -66,6 +71,7 @@ static class Disco
         if (rel["Wear"] is { } w)
         {
             var desgaste = Convert.ToInt32(w);
+            s.Metricas["desgaste"] = desgaste;
             var (e, t) = desgaste switch
             {
                 >= 90 => (Estado.Problema, "El SSD está casi al límite de escrituras. Planea cambiarlo."),

@@ -11,6 +11,7 @@ static class Rendimiento
         {
             var totalGb = Wmi.Numero(os, "TotalVisibleMemorySize") / 1024.0 / 1024.0;
             var usado = 100 - Wmi.Numero(os, "FreePhysicalMemory") * 100.0 / Math.Max(1, Wmi.Numero(os, "TotalVisibleMemorySize"));
+            s.Metricas["ram"] = usado;
             var (e, t) = usado switch
             {
                 >= 90 => (Estado.Atencion, "La memoria está casi llena. Cierra programas o pestañas del navegador que no uses."),

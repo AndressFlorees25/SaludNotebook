@@ -44,6 +44,7 @@ static class Bateria
         if (diseno > 0 && actual > 0)
         {
             var salud = Math.Min(100, actual * 100.0 / diseno);
+            s.Metricas["salud"] = salud;
             var (estado, texto) = salud switch
             {
                 >= 80 => (Estado.Bien, "La batería está sana. Es normal que pierda un poco de capacidad con el uso."),
@@ -56,6 +57,7 @@ static class Bateria
 
         if (ciclos > 0)
         {
+            s.Metricas["ciclos"] = ciclos;
             var estado = ciclos >= 800 ? Estado.Atencion : Estado.Bien;
             s.Agregar("Ciclos de carga", $"{ciclos} ciclos", estado,
                 ciclos >= 800

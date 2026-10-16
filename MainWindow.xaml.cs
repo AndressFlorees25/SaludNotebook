@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -13,7 +14,8 @@ public partial class MainWindow : Window
 
     readonly ObservableCollection<Seccion> _secciones = new();
     readonly SemaphoreSlim _colaInstalacion = new(1, 1);
-    InfoEquipo? _equipo;
+    ResultadoRevision? _resultado;
+    List<ActualizacionPendiente> _pendientes = new();
     bool _buscandoActualizaciones;
 
     public MainWindow()
@@ -22,40 +24,56 @@ public partial class MainWindow : Window
         TarjetasResumen.ItemsSource = _secciones;
     }
 
-    async void Window_Loaded(object sender, RoutedEventArgs e) => await RevisarTodo();
+    async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        CargarHistorial();
+        _ = CargarAjustesAsync();
+        await RevisarTodo();
+    }
+
+    void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (_juegoCts != null) TerminarJuego();
+    }
 
     async void Revisar_Click(object sender, RoutedEventArgs e) => await RevisarTodo();
+
+    // ==================== Revisión ====================
 
     async Task RevisarTodo()
     {
         BotonRevisar.IsEnabled = false;
+        BotonPdf.IsEnabled = false;
         MostrarBanner(Estado.Info, "Revisando tu notebook...", "Esto toma unos segundos.");
         _secciones.Clear();
 
-        _equipo = await Task.Run(Equipo.Leer);
-        MostrarEquipo(_equipo);
+        var r = await Revisor.RevisarAsync();
+        _resultado = r;
+        MostrarEquipo(r.Equipo);
 
-        // Las revisiones rápidas corren en paralelo.
-        var bateria = Task.Run(Bateria.Revisar);
-        var disco = Task.Run(Disco.Revisar);
-        var temperatura = Task.Run(Temperatura.Revisar);
-        var rendimiento = Task.Run(Rendimiento.Revisar);
-        var drivers = Task.Run(Drivers.Revisar);
-        var componentes = Task.Run(Componentes.Revisar);
+        var listas = new Dictionary<string, ItemsControl>
+        {
+            ["Componentes"] = ListaComponentes,
+            ["Batería"] = ListaBateria,
+            ["Disco"] = ListaDisco,
+            ["Temperatura"] = ListaTemperatura,
+            ["Rendimiento"] = ListaRendimiento,
+            ["Drivers"] = ListaDrivers,
+            ["Fallos"] = ListaFallosResumen,
+        };
+        foreach (var s in r.Secciones)
+            Mostrar(s, listas[s.Nombre]);
 
-        Mostrar(await bateria, ListaBateria);
-        Mostrar(await disco, ListaDisco);
-        Mostrar(await temperatura, ListaTemperatura);
-        Mostrar(await rendimiento, ListaRendimiento);
-        var (secDrivers, listaDrivers) = await drivers;
-        Mostrar(secDrivers, ListaDrivers);
-        TablaDrivers.ItemsSource = listaDrivers;
-        var (secComponentes, listaComponentes) = await componentes;
-        Mostrar(secComponentes, ListaComponentes);
-        TarjetasComponentes.ItemsSource = listaComponentes;
+        TablaDrivers.ItemsSource = r.Drivers;
+        TarjetasComponentes.ItemsSource = r.Componentes;
+        ListaFallos.ItemsSource = r.Fallos;
+        SinFallos.Visibility = r.Fallos.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
         ActualizarBanner();
+        Historial.Guardar(r);
+        CargarHistorial();
         BotonRevisar.IsEnabled = true;
+        BotonPdf.IsEnabled = true;
 
         // Windows Update es lento: va aparte y se suma al resumen cuando termina.
         await RevisarActualizaciones();
@@ -70,6 +88,7 @@ public partial class MainWindow : Window
         ListaPendientes.ItemsSource = null;
 
         var (sec, pendientes) = await Task.Run(Actualizaciones.Revisar);
+        _pendientes = pendientes;
         Mostrar(sec, ListaActualizaciones);
         ListaPendientes.ItemsSource = pendientes;
         EstadoActualizaciones.Text = $"Última búsqueda: {DateTime.Now:HH:mm}";
@@ -87,9 +106,8 @@ public partial class MainWindow : Window
 
     void ActualizarBanner()
     {
-        var evaluadas = _secciones.Where(s => s.Estado != Estado.Info).ToList();
-        var peor = evaluadas.Count == 0 ? Estado.Info : evaluadas.Max(s => s.Estado);
-        var revisar = string.Join(", ", evaluadas.Where(s => s.Estado == peor).Select(s => s.Nombre.ToLower()));
+        var peor = Revisor.PeorEstado(_secciones);
+        var revisar = string.Join(", ", _secciones.Where(s => s.Estado == peor).Select(s => s.Nombre.ToLower()));
 
         switch (peor)
         {
@@ -97,7 +115,7 @@ public partial class MainWindow : Window
                 MostrarBanner(peor, "Tu notebook está en buen estado", "No se encontró nada que necesite mantenimiento ni cambio de piezas.");
                 break;
             case Estado.Atencion:
-                MostrarBanner(peor, "Tu notebook está bien, pero hay cosas que conviene revisar", $"Mira: {revisar}. Abre cada pestaña para ver qué hacer.");
+                MostrarBanner(peor, "Tu notebook está bien, pero hay cosas que conviene revisar", $"Mira: {revisar}. Abre cada sección para ver qué hacer.");
                 break;
             case Estado.Problema:
                 MostrarBanner(peor, "Hay algo que necesita atención", $"Revisa: {revisar}. Puede necesitar mantenimiento o un cambio de pieza.");
@@ -148,37 +166,42 @@ public partial class MainWindow : Window
         BotonVantage2.Visibility = vantage;
     }
 
-    void Tarjeta_Click(object sender, MouseButtonEventArgs e)
+    // ==================== Navegación ====================
+
+    bool _programasCargados, _limpiezaCargada;
+
+    async void Pestanas_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is not Seccion s) return;
-        var pestana = Pestanas.Items.OfType<TabItem>().FirstOrDefault(t => (t.Header as string) == s.Nombre);
+        if (e.OriginalSource != Pestanas) return;
+        switch ((Pestanas.SelectedItem as TabItem)?.Header as string)
+        {
+            case "📋 Programas" when !_programasCargados:
+                _programasCargados = true;
+                await CargarProgramas();
+                break;
+            case "🧹 Liberar espacio" when !_limpiezaCargada:
+                _limpiezaCargada = true;
+                await AnalizarLimpieza();
+                break;
+        }
+    }
+
+    void IrA(string encabezado)
+    {
+        var pestana = Pestanas.Items.OfType<TabItem>().FirstOrDefault(t => (t.Header as string) == encabezado);
         if (pestana != null) Pestanas.SelectedItem = pestana;
     }
 
-    void Vantage_Click(object sender, RoutedEventArgs e)
+    void Tarjeta_Click(object sender, MouseButtonEventArgs e)
     {
-        try
-        {
-            Process.Start(new ProcessStartInfo("explorer.exe", AppVantage));
-        }
-        catch
-        {
-            Abrir("https://www.lenovo.com/vantage");
-        }
+        if ((sender as FrameworkElement)?.Tag is Seccion s) IrA(s.Nombre);
     }
 
-    void Soporte_Click(object sender, RoutedEventArgs e)
-    {
-        if (_equipo != null) Abrir(Equipo.PaginaSoporte(_equipo));
-    }
+    void IrALimpieza_Click(object sender, RoutedEventArgs e) => IrA("🧹 Liberar espacio");
+    void IrAModoJuego_Click(object sender, RoutedEventArgs e) => IrA("🎮 Modo juego");
+    void IrAProgramas_Click(object sender, RoutedEventArgs e) => IrA("📋 Programas");
 
-    void CopiarSerie_Click(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrEmpty(_equipo?.NumeroSerie)) return;
-        Clipboard.SetText(_equipo.NumeroSerie);
-        MessageBox.Show(this, $"Número de serie copiado: {_equipo.NumeroSerie}\n\nPégalo en la página de soporte para ver los drivers exactos de tu modelo.",
-            "Copiado", MessageBoxButton.OK, MessageBoxImage.Information);
-    }
+    // ==================== Actualizaciones ====================
 
     async void Instalar_Click(object sender, RoutedEventArgs e)
     {
@@ -209,8 +232,343 @@ public partial class MainWindow : Window
     }
 
     void WindowsUpdate_Click(object sender, RoutedEventArgs e) => Abrir("ms-settings:windowsupdate");
-
     void Opcionales_Click(object sender, RoutedEventArgs e) => Abrir("ms-settings:windowsupdate-optionalupdates");
+
+    // ==================== Fallos ====================
+
+    void DiagnosticoMemoria_Click(object sender, RoutedEventArgs e)
+    {
+        var r = MessageBox.Show(this,
+            "El diagnóstico de memoria de Windows reinicia el notebook y revisa la RAM durante unos 15 minutos.\n\n" +
+            "Guarda lo que estés haciendo antes de continuar. En la siguiente ventana elige cuándo hacerlo.",
+            "Diagnóstico de memoria", MessageBoxButton.OKCancel, MessageBoxImage.Information);
+        if (r == MessageBoxResult.OK) Abrir("mdsched.exe");
+    }
+
+    // ==================== Modo juego ====================
+
+    CancellationTokenSource? _juegoCts;
+    readonly List<(double? Gpu, double? Sistema)> _muestras = new();
+    DateTime _juegoInicio;
+
+    void Juego_Click(object sender, RoutedEventArgs e)
+    {
+        if (_juegoCts == null) EmpezarJuego();
+        else TerminarJuego();
+    }
+
+    void EmpezarJuego()
+    {
+        _muestras.Clear();
+        CajaVeredicto.Visibility = Visibility.Collapsed;
+        BotonJuego.Content = "■  Terminar y ver resultado";
+        BotonJuego.Background = Colores.Problema;
+        _juegoInicio = DateTime.Now;
+        _juegoCts = new CancellationTokenSource();
+        _ = MedirJuego(_juegoCts.Token);
+    }
+
+    async Task MedirJuego(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            var (gpu, uso, sistema) = await Task.Run(() =>
+            {
+                var g = Temperatura.LeerGpus().FirstOrDefault();
+                return ((double?)g?.Temp, g?.Uso, Temperatura.LeerSistema());
+            });
+            if (ct.IsCancellationRequested) break;
+
+            _muestras.Add((gpu, sistema));
+            JuegoGpu.Text = gpu is { } gg ? $"{gg:0} °C" : "-";
+            JuegoSistema.Text = sistema is { } ss ? $"{ss:0} °C" : "-";
+            JuegoGpuMax.Text = $"Máxima: {Max(m => m.Gpu)}";
+            JuegoSistemaMax.Text = $"Máxima: {Max(m => m.Sistema)}";
+            JuegoUso.Text = uso is { } u ? $"Uso de la gráfica: {u}%" : "Uso de la gráfica: -";
+            var t = DateTime.Now - _juegoInicio;
+            JuegoTiempo.Text = t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
+            DibujarJuego();
+
+            try
+            {
+                await Task.Delay(2000, ct);
+            }
+            catch (TaskCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
+    string Max(Func<(double? Gpu, double? Sistema), double?> campo) =>
+        _muestras.Select(campo).Max() is { } v ? $"{v:0} °C" : "-";
+
+    void DibujarJuego() => Grafico.Dibujar(GraficoJuego,
+        new List<IReadOnlyList<double?>> { _muestras.Select(m => m.Gpu).ToList(), _muestras.Select(m => m.Sistema).ToList() },
+        new[] { Colores.Crear("#E65100"), Colores.Crear("#1565C0") }, "°");
+
+    void GraficoJuego_SizeChanged(object sender, SizeChangedEventArgs e) => DibujarJuego();
+
+    void TerminarJuego()
+    {
+        _juegoCts?.Cancel();
+        _juegoCts = null;
+        BotonJuego.Content = "▶  Empezar a medir";
+        BotonJuego.ClearValue(BackgroundProperty);
+
+        if (_muestras.Count < 2)
+        {
+            MostrarVeredicto(Estado.Info, "Mediste muy poco rato para sacar conclusiones. Prueba de nuevo jugando al menos 15 minutos.");
+            return;
+        }
+
+        var minutos = (DateTime.Now - _juegoInicio).TotalMinutes;
+        var maxGpu = _muestras.Max(m => m.Gpu);
+        var maxSis = _muestras.Max(m => m.Sistema);
+        var gpus = _muestras.Where(m => m.Gpu != null).Select(m => m.Gpu!.Value).ToList();
+        double? promGpu = gpus.Count > 0 ? gpus.Average() : null;
+
+        var (estado, texto) = (maxGpu ?? 0, maxSis ?? 0) switch
+        {
+            ( >= 87, _) or (_, >= 95) => (Estado.Problema,
+                "Se calentó demasiado. Conviene una limpieza de ventiladores y cambio de pasta térmica. Mientras tanto, juega sobre una superficie dura (no en la cama) o con una base refrigerante."),
+            ( >= 80, _) or (_, >= 90) => (Estado.Atencion,
+                "Se puso bastante caliente, pero dentro de lo que aguanta. Si con los meses sube más, es señal de polvo en los ventiladores."),
+            _ => (Estado.Bien, "Temperaturas normales para jugar. Tu notebook se enfría bien. 👍"),
+        };
+        if (minutos < 5) texto += " (Mediste menos de 5 minutos: para un resultado confiable juega al menos 15.)";
+
+        var sesion = new SesionJuego
+        {
+            Inicio = _juegoInicio, Minutos = minutos, MaxGpu = maxGpu, PromGpu = promGpu, MaxSistema = maxSis,
+            Veredicto = texto, Estado = estado,
+        };
+        Historial.GuardarSesion(sesion);
+        CargarHistorial();
+
+        var resumen = $"Máxima de la gráfica: {(maxGpu is { } g ? $"{g:0} °C" : "-")}  ·  Máxima del sistema: {(maxSis is { } s ? $"{s:0} °C" : "-")}\n{texto}";
+        MostrarVeredicto(estado, resumen);
+    }
+
+    void MostrarVeredicto(Estado estado, string texto)
+    {
+        CajaVeredicto.BorderBrush = Colores.De(estado);
+        VeredictoJuego.Text = texto;
+        CajaVeredicto.Visibility = Visibility.Visible;
+    }
+
+    // ==================== Liberar espacio ====================
+
+    List<ElementoLimpieza> _limpieza = new();
+
+    async Task AnalizarLimpieza()
+    {
+        ActualizarEspacio();
+        ListaLimpieza.ItemsSource = null;
+        TotalLimpieza.Text = "Calculando cuánto se puede liberar...";
+        BotonLimpiar.IsEnabled = false;
+
+        _limpieza = await Task.Run(Limpieza.Analizar);
+        ListaLimpieza.ItemsSource = _limpieza;
+        ActualizarTotal();
+        BotonLimpiar.IsEnabled = true;
+
+        var descargas = await Task.Run(Limpieza.TamanoDescargas);
+        TextoDescargas.Text = $"Ocupa {Formato.Tamano(descargas)}. Esta carpeta no se limpia sola: revisa si hay instaladores o archivos que ya no necesitas.";
+    }
+
+    void ActualizarEspacio()
+    {
+        try
+        {
+            var c = new DriveInfo(Path.GetPathRoot(Environment.SystemDirectory)!);
+            EspacioActual.Text = $"Disco {c.Name.TrimEnd('\\')}: {c.AvailableFreeSpace / 1e9:0} GB libres de {c.TotalSize / 1e9:0} GB " +
+                                 $"({c.AvailableFreeSpace * 100.0 / c.TotalSize:0}%)";
+        }
+        catch
+        {
+            EspacioActual.Text = "";
+        }
+    }
+
+    void Limpieza_Cambio(object sender, RoutedEventArgs e) => ActualizarTotal();
+
+    void ActualizarTotal()
+    {
+        var total = _limpieza.Where(x => x.Seleccionado).Sum(x => x.Bytes);
+        TotalLimpieza.Text = $"Se liberarán aproximadamente {Formato.Tamano(total)}.";
+    }
+
+    async void Limpiar_Click(object sender, RoutedEventArgs e)
+    {
+        var elegidos = _limpieza.Where(x => x.Seleccionado && x.Bytes > 0).ToList();
+        if (elegidos.Count == 0) return;
+        BotonLimpiar.IsEnabled = false;
+        long total = 0;
+        foreach (var x in elegidos)
+        {
+            x.Resultado = "Limpiando...";
+            var liberado = await Task.Run(x.Limpiar);
+            total += liberado;
+            x.Bytes = Math.Max(0, x.Bytes - liberado);
+            x.Resultado = liberado > 0 ? $"Liberado {Formato.Tamano(liberado)} ✔" : "Nada que borrar (archivos en uso)";
+        }
+        TotalLimpieza.Text = $"¡Listo! Liberaste {Formato.Tamano(total)}. Algunos archivos pueden quedar porque están en uso; se borran la próxima vez.";
+        ActualizarEspacio();
+        BotonLimpiar.IsEnabled = true;
+    }
+
+    async void AnalizarLimpieza_Click(object sender, RoutedEventArgs e) => await AnalizarLimpieza();
+
+    void AbrirDescargas_Click(object sender, RoutedEventArgs e) =>
+        Abrir(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"));
+
+    void AbrirAplicaciones_Click(object sender, RoutedEventArgs e) => Abrir("ms-settings:appsfeatures");
+
+    // ==================== Programas ====================
+
+    async Task CargarProgramas()
+    {
+        EstadoProgramas.Text = "Midiendo qué está usando cada programa...";
+        ListaAbiertos.ItemsSource = null;
+        var abiertos = await Task.Run(Programas.ListarAbiertos);
+        ListaAbiertos.ItemsSource = abiertos;
+        EstadoProgramas.Text = $"{abiertos.Count} programas abiertos, usando {abiertos.Sum(p => p.RamMb) / 1024:0.0} GB de memoria en total.";
+        ListaInicio.ItemsSource = await Task.Run(Programas.ListarInicio);
+    }
+
+    async void ActualizarProgramas_Click(object sender, RoutedEventArgs e) => await CargarProgramas();
+
+    async void CerrarProgramas_Click(object sender, RoutedEventArgs e)
+    {
+        if (ListaAbiertos.ItemsSource is not List<ProgramaAbierto> lista) return;
+        var elegidos = lista.Where(p => p.Seleccionado).ToList();
+        if (elegidos.Count == 0) return;
+        BotonCerrarProgramas.IsEnabled = false;
+        foreach (var p in elegidos)
+        {
+            p.Resultado = "Cerrando...";
+            p.Resultado = await Task.Run(() => Programas.Cerrar(p));
+            p.Seleccionado = false;
+        }
+        EstadoProgramas.Text = $"Listo. Liberaste unos {elegidos.Where(p => p.Resultado.StartsWith("Cerrado")).Sum(p => p.RamMb) / 1024:0.0} GB de memoria.";
+        BotonCerrarProgramas.IsEnabled = true;
+    }
+
+    // ==================== Historial ====================
+
+    List<RegistroHistorial> _historial = new();
+
+    void CargarHistorial()
+    {
+        _historial = Historial.LeerRevisiones();
+        TablaHistorial.ItemsSource = _historial.OrderByDescending(x => x.Fecha).ToList();
+        ListaSesiones.ItemsSource = Historial.LeerSesiones().AsEnumerable().Reverse().ToList();
+        DibujarHistorial();
+    }
+
+    void DibujarHistorial()
+    {
+        Grafico.Dibujar(GraficoBateria, new List<IReadOnlyList<double?>> { _historial.Select(x => x.SaludBateria).ToList() },
+            new[] { Colores.Bien }, "%");
+        Grafico.Dibujar(GraficoDisco, new List<IReadOnlyList<double?>> { _historial.Select(x => x.DiscoLibreGb).ToList() },
+            new[] { Colores.Crear("#1565C0") }, " GB");
+    }
+
+    void Historial_SizeChanged(object sender, SizeChangedEventArgs e) => DibujarHistorial();
+
+    // ==================== Ajustes ====================
+
+    async Task CargarAjustesAsync()
+    {
+        ChkSemanal.IsChecked = await Task.Run(() => Instalacion.Existe(Instalacion.TareaSemanal));
+        if (Instalacion.HayAccesoDirecto())
+        {
+            EstadoAcceso.Text = "✔ Ya tienes el acceso directo en el escritorio";
+            BotonAcceso.Content = "Volver a crearlo";
+        }
+    }
+
+    void Semanal_Click(object sender, RoutedEventArgs e)
+    {
+        EstadoAjustes.Text = "";
+        try
+        {
+            if (ChkSemanal.IsChecked == true) Instalacion.CrearTareaSemanal();
+            else Instalacion.Borrar(Instalacion.TareaSemanal);
+        }
+        catch (Exception ex)
+        {
+            ChkSemanal.IsChecked = !ChkSemanal.IsChecked;
+            EstadoAjustes.Text = "No se pudo cambiar la revisión automática: " + ex.Message;
+        }
+    }
+
+    void AccesoDirecto_Click(object sender, RoutedEventArgs e)
+    {
+        EstadoAjustes.Text = "";
+        try
+        {
+            Instalacion.CrearTareaAbrir();
+            Instalacion.CrearAccesosDirectos();
+            EstadoAcceso.Text = "✔ Listo: usa el ícono \"Salud del Notebook\" del escritorio";
+        }
+        catch (Exception ex)
+        {
+            EstadoAjustes.Text = "No se pudo crear el acceso directo: " + ex.Message;
+        }
+    }
+
+    async void Pdf_Click(object sender, RoutedEventArgs e)
+    {
+        if (_resultado == null) return;
+        var ruta = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            $"Informe Salud Notebook {DateTime.Now:yyyy-MM-dd HH-mm}.pdf");
+        BotonPdf.IsEnabled = false;
+        try
+        {
+            var r = _resultado;
+            var pendientes = _pendientes.ToList();
+            await Task.Run(() => Informe.Generar(r, pendientes, Historial.LeerSesiones(), ruta));
+            Abrir(ruta);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "No se pudo crear el PDF: " + ex.Message, "Informe", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            BotonPdf.IsEnabled = true;
+        }
+    }
+
+    // ==================== Equipo / soporte ====================
+
+    void Vantage_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe", AppVantage));
+        }
+        catch
+        {
+            Abrir("https://www.lenovo.com/vantage");
+        }
+    }
+
+    void Soporte_Click(object sender, RoutedEventArgs e)
+    {
+        if (_resultado != null) Abrir(Equipo.PaginaSoporte(_resultado.Equipo));
+    }
+
+    void CopiarSerie_Click(object sender, RoutedEventArgs e)
+    {
+        var serie = _resultado?.Equipo.NumeroSerie;
+        if (string.IsNullOrEmpty(serie)) return;
+        Clipboard.SetText(serie);
+        MessageBox.Show(this, $"Número de serie copiado: {serie}\n\nPégalo en la página de soporte para ver los drivers exactos de tu modelo.",
+            "Copiado", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
 
     static void Abrir(string destino)
     {

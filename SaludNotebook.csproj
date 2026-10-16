@@ -9,9 +9,12 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyTitle>Salud del Notebook</AssemblyTitle>
     <RootNamespace>SaludNotebook</RootNamespace>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="QuestPDF" Version="2026.9.1" />
     <PackageReference Include="System.Management" Version="9.0.0" />
   </ItemGroup>
 
